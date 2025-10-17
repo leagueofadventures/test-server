@@ -228,9 +228,8 @@ func gameLoop() {
 		}
 
 		// Отправка состояния всем клиентам
-		stateJSON, _ := json.Marshal(gameState)
 		for _, conn := range clients {
-			conn.Write(stateJSON)
+			conn.WriteJSON(gameState)
 		}
 		mu.Unlock()
 	}
