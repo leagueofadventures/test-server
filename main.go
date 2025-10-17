@@ -63,6 +63,7 @@ func main() {
 		port = "8080"
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HTTP request to /")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Server is running"))
 	})
