@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
-	"net"
+	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type Player struct {
@@ -43,10 +46,15 @@ var (
 		Mobs:        []*Mob{},
 		Projectiles: []*Projectile{},
 	}
-	clients   = make(map[string]net.Conn)
+	clients   = make(map[string]*websocket.Conn)
 	mu        sync.Mutex
 	nextMobID = 0
 	nextProjID = 0
+	upgrader  = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true // Allow all origins for simplicity
+		},
+	}
 )
 
 func main() {
@@ -54,15 +62,30 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	listener, err := net.Listen("tcp", ":"+port)
+	http.HandleFunc("/ws", wsHandler)
+	fmt.Println("Server started on :" + port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Error starting server:", err)
+		log.Println("Upgrade error:", err)
 		return
 	}
-	defer listener.Close()
-	fmt.Println("Server started on :" + port)
+	playerID := fmt.Sprintf("%d", len(clients)+1)
+	mu.Lock()
+	clients[playerID] = conn
+	gameState.Players[playerID] = &Player{
+		X:      100 + float64(len(clients)*100),
+		Y:      300,
+		ID:     playerID,
+		Health: 10,
+	}
+	mu.Unlock()
+	go handleClient(conn, playerID)
 
-	// Генерация мобов
+	// Генерация мобов (запускаем один раз при первом подключении)
 	go func() {
 		for {
 			time.Sleep(5 * time.Second)
@@ -82,26 +105,9 @@ func main() {
 
 	// Игровой цикл
 	go gameLoop()
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println("Error accepting connection:", err)
-			continue
-		}
-		playerID := fmt.Sprintf("%d", len(clients)+1)
-		clients[playerID] = conn
-		gameState.Players[playerID] = &Player{
-			X:      100 + float64(len(clients)*100),
-			Y:      300,
-			ID:     playerID,
-			Health: 10,
-		}
-		go handleClient(conn, playerID)
-	}
 }
 
-func handleClient(conn net.Conn, playerID string) {
+func handleClient(conn *websocket.Conn, playerID string) {
 	defer conn.Close()
 	defer func() {
 		mu.Lock()
@@ -110,14 +116,14 @@ func handleClient(conn net.Conn, playerID string) {
 		mu.Unlock()
 	}()
 
-	buffer := make([]byte, 1024)
 	for {
-		n, err := conn.Read(buffer)
+		_, message, err := conn.ReadMessage()
 		if err != nil {
+			log.Println("Read error:", err)
 			break
 		}
 		var action map[string]interface{}
-		json.Unmarshal(buffer[:n], &action)
+		json.Unmarshal(message, &action)
 
 		mu.Lock()
 		player := gameState.Players[playerID]
