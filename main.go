@@ -22,15 +22,17 @@ var upgrader = websocket.Upgrader{
 }
 
 type Player struct {
-	ID        string    `json:"id"`
-	X         float64   `json:"x"`
-	Y         float64   `json:"y"`
-	Direction string    `json:"direction"`
-	Moving    bool      `json:"moving"`
-	IP        string    `json:"ip"`
-	IsAdmin   bool      `json:"is_admin"`
-	Visible   bool      `json:"visible"`
+	ID         string    `json:"id"`
+	X          float64   `json:"x"`
+	Y          float64   `json:"y"`
+	Direction  string    `json:"direction"`
+	Moving     bool      `json:"moving"`
+	Attacking  bool      `json:"attacking"`
+	IP         string    `json:"ip"`
+	IsAdmin    bool      `json:"is_admin"`
+	Visible    bool      `json:"visible"`
 	LastUpdate time.Time `json:"-"`
+	LastAttack time.Time `json:"-"`
 }
 
 type Mob struct {
@@ -56,7 +58,7 @@ type GameState struct {
 	Players     map[string]Player     `json:"Players"`
 	Mobs        map[string]Mob        `json:"Mobs"`
 	Projectiles map[string]Projectile `json:"Projectiles"`
-	ServerTime  float64               `json:"server_time"`
+	ServerTime  int64                 `json:"server_time"`
 	ChatHistory []ChatMessage         `json:"chat_history"`
 }
 
@@ -82,7 +84,7 @@ type ServerMessage struct {
 	Players    map[string]interface{} `json:"Players,omitempty"`
 	Mobs       map[string]interface{} `json:"Mobs,omitempty"`
 	Projectiles map[string]interface{} `json:"Projectiles,omitempty"`
-	ServerTime float64                `json:"server_time,omitempty"`
+	ServerTime int64                  `json:"server_time,omitempty"`
 	ChatHistory []ChatMessage         `json:"chat_history,omitempty"`
 }
 
@@ -231,6 +233,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		IsAdmin:    isAdmin,
 		Visible:    true,
 		LastUpdate: time.Now(),
+		LastAttack: time.Now(),
 	}
 	connections[cid] = conn
 	mutex.Unlock()
@@ -293,32 +296,37 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			player.Y = math.Max(0, math.Min(player.Y, MAP_HEIGHT))
 			player.Direction = direction
 			player.Moving = moving
+			player.Attacking = msg.Attack
 			player.LastUpdate = time.Now()
 
 			// Attack
 			if msg.Attack {
-				projID := fmt.Sprintf("proj_%d", nextProjID)
-				nextProjID++
-				dirX := 0.0
-				dirY := 0.0
-				switch direction {
-				case "up":
-					dirY = -1
-				case "down":
-					dirY = 1
-				case "left":
-					dirX = -1
-				case "right":
-					dirX = 1
-				}
-				projectiles[projID] = &Projectile{
-					ID:         projID,
-					X:          player.X,
-					Y:          player.Y,
-					DX:         dirX * PROJECTILE_SPEED,
-					DY:         dirY * PROJECTILE_SPEED,
-					OwnerID:    cid,
-					LastUpdate: time.Now(),
+				// Add cooldown to slow down shooting
+				if time.Since(player.LastAttack) > 600*time.Millisecond {
+					projID := fmt.Sprintf("proj_%d", nextProjID)
+					nextProjID++
+					dirX := 0.0
+					dirY := 0.0
+					switch direction {
+					case "up":
+						dirY = -1
+					case "down":
+						dirY = 1
+					case "left":
+						dirX = -1
+					case "right":
+						dirX = 1
+					}
+					projectiles[projID] = &Projectile{
+						ID:         projID,
+						X:          player.X,
+						Y:          player.Y,
+						DX:         dirX * PROJECTILE_SPEED,
+						DY:         dirY * PROJECTILE_SPEED,
+						OwnerID:    cid,
+						LastUpdate: time.Now(),
+					}
+					player.LastAttack = time.Now()
 				}
 			}
 
@@ -421,6 +429,7 @@ func gameLoop() {
 				"y":         p.Y,
 				"direction": p.Direction,
 				"moving":    p.Moving,
+				"attacking": p.Attacking,
 			}
 		}
 		mobsState := make(map[string]interface{})
@@ -447,7 +456,7 @@ func gameLoop() {
 			Players:     playersState,
 			Mobs:        mobsState,
 			Projectiles: projectilesState,
-			ServerTime:  float64(currentTime.Unix()),
+			ServerTime:  int64(currentTime.Unix()),
 			ChatHistory: chatHistory[len(chatHistory)-min(10, len(chatHistory)):],
 		}
 
