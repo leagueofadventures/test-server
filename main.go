@@ -1,14 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -449,7 +447,7 @@ func gameLoop() {
 			Players:     playersState,
 			Mobs:        mobsState,
 			Projectiles: projectilesState,
-			ServerTime:  currentTime.Unix(),
+			ServerTime:  float64(currentTime.Unix()),
 			ChatHistory: chatHistory[len(chatHistory)-min(10, len(chatHistory)):],
 		}
 
