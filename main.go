@@ -226,7 +226,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	players[cid] = &Player{
 		ID:         cid,
 		X:          WIDTH / 2,
-		Y:          HEIGHT / 2,
+		Y:          HEIGHT - 100,
 		Direction:  "down",
 		Moving:     false,
 		IP:         ip,
