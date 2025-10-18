@@ -98,7 +98,7 @@ var (
 	nextMobID   = 0
 	nextProjID  = 0
 	startTime   = time.Now()
-	adminIPs    = []string{"192.168.1.4", "109.252.167.96", "127.0.0.1"}
+	adminIPs    = []string{"192.168.1.4", "109.252.167.96", "127.0.0.1", "::1"}
 )
 
 const (
